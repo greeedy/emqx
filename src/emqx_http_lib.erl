@@ -19,6 +19,7 @@
 -export([ uri_encode/1
         , uri_decode/1
         , uri_parse/1
+        , normalise_headers/1
         ]).
 
 -export_type([uri_map/0]).
@@ -31,22 +32,40 @@
                      fragment => unicode:chardata(),
                      userinfo => unicode:chardata()}.
 
+-type hex_uri() :: string() | binary().
+-type maybe_hex_uri() :: string() | binary(). %% A possibly hexadecimal encoded URI.
+-type uri() :: string() | binary().
+
 %% @doc Decode percent-encoded URI.
 %% This is copied from http_uri.erl which has been deprecated since OTP-23
 %% The recommended replacement uri_string function is not quite equivalent
 %% and not backward compatible.
--spec uri_decode(binary()) -> binary().
-uri_decode(<<$%, Hex:2/binary, Rest/bits>>) ->
-    <<(binary_to_integer(Hex, 16)), (uri_decode(Rest))/binary>>;
-uri_decode(<<First:1/binary, Rest/bits>>) ->
-    <<First/binary, (uri_decode(Rest))/binary>>;
-uri_decode(<<>>) ->
+-spec uri_decode(maybe_hex_uri()) -> uri().
+uri_decode(String) when is_list(String) ->
+    do_uri_decode(String);
+uri_decode(String) when is_binary(String) ->
+    do_uri_decode_binary(String).
+
+do_uri_decode([$%,Hex1,Hex2|Rest]) ->
+    [hex2dec(Hex1)*16+hex2dec(Hex2)|do_uri_decode(Rest)];
+do_uri_decode([First|Rest]) ->
+    [First|do_uri_decode(Rest)];
+do_uri_decode([]) ->
+    [].
+
+do_uri_decode_binary(<<$%, Hex:2/binary, Rest/bits>>) ->
+    <<(binary_to_integer(Hex, 16)), (do_uri_decode_binary(Rest))/binary>>;
+do_uri_decode_binary(<<First:1/binary, Rest/bits>>) ->
+    <<First/binary, (do_uri_decode_binary(Rest))/binary>>;
+do_uri_decode_binary(<<>>) ->
     <<>>.
 
 %% @doc Encode URI.
--spec uri_encode(binary()) -> binary().
+-spec uri_encode(uri()) -> hex_uri().
+uri_encode(URI) when is_list(URI) ->
+    lists:append([do_uri_encode(Char) || Char <- URI]);
 uri_encode(URI) when is_binary(URI) ->
-    << <<(uri_encode_binary(Char))/binary>> || <<Char>> <= URI >>.
+    << <<(do_uri_encode_binary(Char))/binary>> || <<Char>> <= URI >>.
 
 %% @doc Parse URI into a map as uri_string:uri_map(), but with two fields
 %% normalised: (1): port number is never 'undefined', default ports are used
@@ -73,27 +92,50 @@ do_parse(URI) ->
             normalise_parse_result(Map2)
     end.
 
-normalise_parse_result(#{host := _, scheme := Scheme0} = Map) ->
-    Scheme = atom_scheme(Scheme0),
-    DefaultPort = case https =:= Scheme of
-                      true  -> 443;
-                      false -> 80
-                  end,
+%% @doc Return HTTP headers list with keys lower-cased and
+%% underscores replaced with hyphens
+%% NOTE: assuming the input Headers list is a proplists,
+%% that is, when a key is duplicated, list header overrides tail
+%% e.g. [{"Content_Type", "applicaiton/binary"}, {"content-type", "applicaiton/json"}]
+%% results in: [{"content-type", "applicaiton/binary"}]
+normalise_headers(Headers0) ->
+    F = fun({K0, V}) ->
+                K = re:replace(K0, "_", "-", [{return,list}]),
+                {string:lowercase(K), V}
+        end,
+    Headers = lists:map(F, Headers0),
+    Keys = proplists:get_keys(Headers),
+    [{K, proplists:get_value(K, Headers)} || K <- Keys].
+
+normalise_parse_result(#{host := Host, scheme := Scheme0} = Map) ->
+    {Scheme, DefaultPort} = atom_scheme_and_default_port(Scheme0),
     Port = case maps:get(port, Map, undefined) of
                N when is_number(N) -> N;
                _ -> DefaultPort
            end,
-    Map#{ scheme => Scheme
+    Map#{ scheme := Scheme
+        , host := emqx_misc:maybe_parse_ip(Host)
         , port => Port
         }.
 
-%% NOTE: so far we only support http schemes.
-atom_scheme(Scheme) when is_list(Scheme) -> atom_scheme(list_to_binary(Scheme));
-atom_scheme(<<"https">>) -> https;
-atom_scheme(<<"http">>) -> http;
-atom_scheme(Other) -> throw({unsupported_scheme, Other}).
+%% NOTE: so far we only support http/coap schemes.
+atom_scheme_and_default_port(Scheme) when is_list(Scheme) ->
+    atom_scheme_and_default_port(list_to_binary(Scheme));
+atom_scheme_and_default_port(<<"http">> ) -> {http,   80};
+atom_scheme_and_default_port(<<"https">>) -> {https, 443};
+atom_scheme_and_default_port(<<"coap">> ) -> {coap,  5683};
+atom_scheme_and_default_port(<<"coaps">>) -> {coaps, 5684};
+atom_scheme_and_default_port(Other) -> throw({unsupported_scheme, Other}).
 
-uri_encode_binary(Char) ->
+do_uri_encode(Char) ->
+    case reserved(Char) of
+	    true ->
+	        [ $% | integer_to_hexlist(Char)];
+	    false ->
+	        [Char]
+    end.
+
+do_uri_encode_binary(Char) ->
     case reserved(Char)  of
         true ->
             << $%, (integer_to_binary(Char, 16))/binary >>;
@@ -125,3 +167,10 @@ reserved($^) -> true;
 reserved($%) -> true;
 reserved($\s) -> true;
 reserved(_) -> false.
+
+integer_to_hexlist(Int) ->
+    integer_to_list(Int, 16).
+
+hex2dec(X) when (X>=$0) andalso (X=<$9) -> X-$0;
+hex2dec(X) when (X>=$A) andalso (X=<$F) -> X-$A+10;
+hex2dec(X) when (X>=$a) andalso (X=<$f) -> X-$a+10.

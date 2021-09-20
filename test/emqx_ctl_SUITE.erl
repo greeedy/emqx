@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -67,10 +67,12 @@ t_run_commands(_) ->
 t_print(_) ->
     ok = emqx_ctl:print("help"),
     ok = emqx_ctl:print("~s", [help]),
+    ok = emqx_ctl:print("~s", [<<"~!@#$%^&*()">>]),
     % - check the output of the usage
     mock_print(),
-    ?assertEqual("help", emqx_ctl:print("help")),
+    ?assertEqual("help~n", emqx_ctl:print("help~n")),
     ?assertEqual("help", emqx_ctl:print("~s", [help])),
+    ?assertEqual("~!@#$%^&*()", emqx_ctl:print("~s", [<<"~!@#$%^&*()">>])),
     unmock_print().
 
 t_usage(_) ->

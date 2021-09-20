@@ -10,6 +10,7 @@ metadata:
     app.kubernetes.io/managed-by: {{ .Release.Service }}
 spec:
   serviceName: {{ include "emqx.fullname" . }}-headless
+  podManagementPolicy: {{ .Values.podManagementPolicy }}
   {{- if and .Values.persistence.enabled (not .Values.persistence.existingClaim) }}
   volumeClaimTemplates:
     - metadata:
@@ -47,6 +48,10 @@ spec:
         version: {{ .Chart.AppVersion }}
         app.kubernetes.io/name: {{ include "emqx.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
+      {{- if .Values.recreatePods }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | quote }}
+      {{- end }}
     spec:
       volumes:
       - name: emqx-loaded-plugins
@@ -116,6 +121,10 @@ spec:
             containerPort: {{ .Values.emqxConfig.EMQX_LISTENER__WSS__EXTERNAL | default 8084 }}
           - name: dashboard
             containerPort: {{ .Values.emqxConfig.EMQX_DASHBOARD__LISTENER__HTTP | default 18083 }}
+          {{- if not (empty .Values.emqxConfig.EMQX_LISTENER__TCP__INTERNAL) }}
+          - name: internalmqtt
+            containerPort: {{ .Values.emqxConfig.EMQX_LISTENER__TCP__INTERNAL }}
+          {{- end }}
           {{- if not (empty .Values.emqxConfig.EMQX_DASHBOARD__LISTENER__HTTPS) }}
           - name: dashboardtls
             containerPort: {{ .Values.emqxConfig.EMQX_DASHBOARD__LISTENER__HTTPS }}

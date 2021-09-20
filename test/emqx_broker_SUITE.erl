@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2018-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -192,19 +192,19 @@ t_shard(_) ->
     ok = meck:unload(emqx_broker_helper).
 
 t_stats_fun(_) ->
-    ?assertEqual(0, emqx_stats:getstat('subscribers.count')),
-    ?assertEqual(0, emqx_stats:getstat('subscriptions.count')),
-    ?assertEqual(0, emqx_stats:getstat('suboptions.count')),
+    N = emqx_stats:getstat('subscribers.count'),
+    N = emqx_stats:getstat('subscriptions.count'),
+    N = emqx_stats:getstat('suboptions.count'),
     ok = emqx_broker:subscribe(<<"topic">>, <<"clientid">>),
     ok = emqx_broker:subscribe(<<"topic2">>, <<"clientid">>),
     emqx_broker:stats_fun(),
     ct:sleep(10),
-    ?assertEqual(2, emqx_stats:getstat('subscribers.count')),
-    ?assertEqual(2, emqx_stats:getstat('subscribers.max')),
-    ?assertEqual(2, emqx_stats:getstat('subscriptions.count')),
-    ?assertEqual(2, emqx_stats:getstat('subscriptions.max')),
-    ?assertEqual(2, emqx_stats:getstat('suboptions.count')),
-    ?assertEqual(2, emqx_stats:getstat('suboptions.max')).
+    ?assertEqual(N + 2, emqx_stats:getstat('subscribers.count')),
+    ?assertEqual(N + 2, emqx_stats:getstat('subscribers.max')),
+    ?assertEqual(N + 2, emqx_stats:getstat('subscriptions.count')),
+    ?assertEqual(N + 2, emqx_stats:getstat('subscriptions.max')),
+    ?assertEqual(N + 2, emqx_stats:getstat('suboptions.count')),
+    ?assertEqual(N + 2, emqx_stats:getstat('suboptions.max')).
 
 recv_msgs(Count) ->
     recv_msgs(Count, []).

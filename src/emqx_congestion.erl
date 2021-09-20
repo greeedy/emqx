@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -48,7 +48,10 @@ maybe_alarm_conn_congestion(Socket, Transport, Channel) ->
 
 cancel_alarms(Socket, Transport, Channel) ->
     lists:foreach(fun(Reason) ->
-        do_cancel_alarm_congestion(Socket, Transport, Channel, Reason)
+        case has_alarm_sent(Reason) of
+            true -> do_cancel_alarm_congestion(Socket, Transport, Channel, Reason);
+            false -> ok
+        end
     end, ?ALL_ALARM_REASONS).
 
 is_alarm_enabled(Channel) ->

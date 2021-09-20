@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@
 
 request(PoolName, get, Path, Headers, Params, Timeout) ->
     NewPath = Path ++ "?" ++ binary_to_list(cow_qs:qs(bin_kw(Params))),
-    reply(ehttpc:request(ehttpc_pool:pick_worker(PoolName), get, {NewPath, Headers}, Timeout));
+    reply(ehttpc:request(PoolName, get, {NewPath, Headers}, Timeout));
 
 request(PoolName, post, Path, Headers, Params, Timeout) ->
     Body = case proplists:get_value("content-type", Headers) of
@@ -38,7 +38,7 @@ request(PoolName, post, Path, Headers, Params, Timeout) ->
                "application/json" -> 
                    emqx_json:encode(bin_kw(Params))
            end,
-    reply(ehttpc:request(ehttpc_pool:pick_worker(PoolName), post, {Path, Headers, Body}, Timeout)).
+    reply(ehttpc:request(PoolName, post, {Path, Headers, Body}, Timeout)).
 
 reply({ok, StatusCode, _Headers}) ->
     {ok, StatusCode, <<>>};

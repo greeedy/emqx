@@ -98,7 +98,7 @@ fill_tuples() {
     local elements=${*:2}
     for var in $elements; do
         if grep -qE "\{\s*$var\s*,\s*(true|false)\s*\}\s*\." "$file"; then
-            sed -r "s/\{\s*($var)\s*,\s*(true|false)\s*\}\s*\./{\1, true}./1" "$file" > tmpfile && mv tmpfile "$file"
+            sed -r "s/\{\s*($var)\s*,\s*(true|false)\s*\}\s*\./{\1, true}./1" "$file" > tmpfile && cat tmpfile > "$file" 
         elif grep -q "$var\s*\." "$file"; then
             # backward compatible.
             sed -r "s/($var)\s*\./{\1, true}./1" "$file" > tmpfile && cat tmpfile > "$file"
@@ -128,5 +128,11 @@ if [[ -n "$EMQX_LOADED_MODULES" ]]; then
     # Parse module names and place `{module_name, true}.` tuples in `loaded_modules`.
     fill_tuples "$LOADED_MODULES" "$EMQX_LOADED_MODULES"
 fi
+
+# The default rpc port discovery 'stateless' is mostly for clusters
+# having static node names. So it's troulbe-free for multiple emqx nodes
+# running on the same host.
+# When start emqx in docker, it's mostly one emqx node in one container
+export EMQX_RPC__PORT_DISCOVERY="${EMQX_RPC__PORT_DISCOVERY:-manual}"
 
 exec "$@"

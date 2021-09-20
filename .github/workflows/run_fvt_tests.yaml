@@ -5,9 +5,6 @@ on:
     tags:
       - v*
       - e*
-  release:
-    types:
-      - published
   pull_request:
 
 jobs:
@@ -16,6 +13,10 @@ jobs:
 
         steps:
         - uses: actions/checkout@v1
+        - uses: gleam-lang/setup-erlang@v1.1.2
+          id: install_erlang
+          with:
+            otp-version: 23.2
         - name: prepare
           run: |
             if make emqx-ee --dry-run > /dev/null 2>&1; then
@@ -24,8 +25,10 @@ jobs:
               echo "${{ secrets.CI_GIT_TOKEN }}" >> scripts/git-token
               make deps-emqx-ee
               echo "TARGET=emqx/emqx-ee" >> $GITHUB_ENV
+              echo "EMQX_TAG=$(./pkg-vsn.sh)" >> $GITHUB_ENV
             else
               echo "TARGET=emqx/emqx" >> $GITHUB_ENV
+              echo "EMQX_TAG=$(./pkg-vsn.sh)" >> $GITHUB_ENV
             fi
         - name: make emqx image
           run: make docker
@@ -33,19 +36,27 @@ jobs:
           timeout-minutes: 5
           run: |
             set -e -u -x
-            docker-compose -f .ci/fvt_tests/docker-compose.yaml up -d
-            while [ "$(docker inspect -f '{{ .State.Health.Status}}' node1.emqx.io)" != "healthy" ] || [ "$(docker inspect -f '{{ .State.Health.Status}}' node2.emqx.io)" != "healthy" ]; do
-              if [ $(docker ps -a -f name=fvt_tests_emqx -f status=exited -q | wc -l) -ne 0 ]; then
-                  echo "['$(date -u +"%Y-%m-%dT%H:%M:%SZ")']:emqx stop";
-                  exit;
-              else
-                  echo "['$(date -u +"%Y-%m-%dT%H:%M:%SZ")']:waiting emqx";
-                  sleep 5;
-              fi;
+            echo "CUTTLEFISH_ENV_OVERRIDE_PREFIX=EMQX_" >> .ci/docker-compose-file/conf.cluster.env
+            echo "EMQX_ZONE__EXTERNAL__RETRY_INTERVAL=2s" >> .ci/docker-compose-file/conf.cluster.env
+            echo "EMQX_MQTT__MAX_TOPIC_ALIAS=10" >> .ci/docker-compose-file/conf.cluster.env
+            docker-compose \
+                -f .ci/docker-compose-file/docker-compose-emqx-cluster.yaml \
+                -f .ci/docker-compose-file/docker-compose-python.yaml \
+                up -d
+            while ! docker exec -i node1.emqx.io bash -c "emqx eval \"['emqx@node1.emqx.io','emqx@node2.emqx.io'] = maps:get(running_nodes, ekka_cluster:info()).\"" > /dev/null 2>&1; do
+                echo "['$(date -u +"%Y-%m-%dT%H:%M:%SZ")']:waiting emqx";
+                sleep 5;
             done
+        - name: verify EMQX_LOADED_PLUGINS override working
+          run: |
+            expected="{emqx_sn, true}."
+            output=$(docker exec -i node1.emqx.io bash -c "cat data/loaded_plugins" | tail -n1)
+            if [ "$expected" != "$output" ]; then
+                exit 1
+            fi
         - name: make paho tests
           run: |
-            if ! docker exec -i paho_client /scripts/pytest.sh; then
+            if ! docker exec -i python /scripts/pytest.sh; then
               docker logs node1.emqx.io
               docker logs node2.emqx.io
               exit 1
@@ -56,6 +67,10 @@ jobs:
 
         steps:
         - uses: actions/checkout@v1
+        - uses: gleam-lang/setup-erlang@v1.1.2
+          id: install_erlang
+          with:
+            otp-version: 23.2
         - name: prepare
           run: |
             if make emqx-ee --dry-run > /dev/null 2>&1; then
@@ -115,11 +130,27 @@ jobs:
               echo "waiting emqx started";
               sleep 10;
             done
-        - name: get pods log
+        - name: get emqx-0 pods log
           if: failure()
           env:
             KUBECONFIG: "/etc/rancher/k3s/k3s.yaml"
-          run: kubectl describe pods emqx-0
+          run: |
+            kubectl describe pods emqx-0
+            kubectl logs emqx-0
+        - name: get emqx-1 pods log
+          if: failure()
+          env:
+            KUBECONFIG: "/etc/rancher/k3s/k3s.yaml"
+          run: |
+            kubectl describe pods emqx-1
+            kubectl logs emqx-1
+        - name: get emqx-2 pods log
+          if: failure()
+          env:
+            KUBECONFIG: "/etc/rancher/k3s/k3s.yaml"
+          run: |
+            kubectl describe pods emqx-2
+            kubectl logs emqx-2
         - uses: actions/checkout@v2
           with:
             repository: emqx/paho.mqtt.testing
@@ -149,7 +180,7 @@ jobs:
 
     relup_test:
         runs-on: ubuntu-20.04
-        container: emqx/build-env:erl23.2.7-ubuntu20.04
+        container: emqx/build-env:erl23.2.7.2-emqx-2-ubuntu20.04
         defaults:
           run:
             shell: bash
@@ -171,12 +202,12 @@ jobs:
         - uses: actions/checkout@v2
           with:
             repository: emqx/emqtt-bench
-            ref: master
+            ref: '0.3.3'
             path: emqtt-bench
         - uses: actions/checkout@v2
           with:
             repository: hawk/lux
-            ref: lux-2.4
+            ref: lux-2.6
             path: lux
         - uses: actions/checkout@v2
           with:
@@ -204,27 +235,33 @@ jobs:
                 broker="emqx-ee"
                 edition='enterprise'
             fi
+            echo "BROKER=$broker" >> $GITHUB_ENV
 
-            vsn="$(grep -E "define.+EMQX_RELEASE.+${edition}" include/emqx_release.hrl | cut -d '"' -f2)"
+            vsn="$(./pkg-vsn.sh)"
             echo "VSN=$vsn" >> $GITHUB_ENV
 
             pre_vsn="$(echo $vsn | grep -oE '^[0-9]+.[0-9]')"
-            if  [ $PROFILE = "emqx" ]; then
-                old_vsns="$(git tag -l "v$pre_vsn.[0-9]" | tr "\n" " " | sed "s/v$vsn//")"
+            if [ $PROFILE = "emqx" ]; then
+                old_vsns="$(git tag -l "v$pre_vsn.[0-9]" | xargs echo -n | sed "s/v$vsn//")"
             else
-                old_vsns="$(git tag -l "e$pre_vsn.[0-9]" | tr "\n" " " | sed "s/v$vsn//")"
+                old_vsns="$(git tag -l "e$pre_vsn.[0-9]" | xargs echo -n | sed "s/e$vsn//")"
             fi
             echo "OLD_VSNS=$old_vsns" >> $GITHUB_ENV
         - name: download emqx
           run: |
             set -e -x -u
-            cd emqx
+            mkdir -p emqx/_upgrade_base
+            cd emqx/_upgrade_base
             old_vsns=($(echo $OLD_VSNS | tr ' ' ' '))
             for old_vsn in ${old_vsns[@]}; do
-              wget https://s3-${{ secrets.AWS_DEFAULT_REGION }}.amazonaws.com/${{ secrets.AWS_S3_BUCKET }}/$broker/$old_vsn/$PROFILE-ubuntu20.04-${old_vsn#[e|v]}-x86_64.zip
+              wget --no-verbose https://s3-us-west-2.amazonaws.com/packages.emqx/$BROKER/$old_vsn/$PROFILE-ubuntu20.04-${old_vsn#[e|v]}-amd64.zip
             done
         - name: build emqx
           run: make -C emqx ${PROFILE}-zip
+        - uses: actions/upload-artifact@v2
+          with:
+            name: emqx
+            path: emqx/_packages/**/*.zip
         - name: build emqtt-bench
           run: make -C emqtt-bench
         - name: build lux
@@ -236,14 +273,16 @@ jobs:
             make
             make install
         - name: run relup test
+          timeout-minutes: 20
           run: |
             set -e -x -u
             if [ -n "$OLD_VSNS" ]; then
                 mkdir -p packages
-                cp emqx/_packages/emqx/*.zip packages
-                cp emqx/*.zip packages
-                lux -v \
-                --timeout 600000 \
+                cp emqx/_packages/${PROFILE}/*.zip packages
+                cp emqx/_upgrade_base/*.zip packages
+                lux \
+                --case_timeout infinity \
+                --var PROFILE=$PROFILE \
                 --var PACKAGE_PATH=$(pwd)/packages \
                 --var BENCH_PATH=$(pwd)/emqtt-bench \
                 --var ONE_MORE_EMQX_PATH=$(pwd)/one_more_emqx \
@@ -254,8 +293,16 @@ jobs:
         - uses: actions/upload-artifact@v1
           if: failure()
           with:
+            name: emqx_logs
+            path: packages/emqx/log/emqx.log.1
+        - uses: actions/upload-artifact@v1
+          if: failure()
+          with:
+            name: emqx2_logs
+            path: packages/emqx2/log/emqx.log.1
+        - uses: actions/upload-artifact@v1
+          if: failure()
+          with:
             name: lux_logs
             path: lux_logs
-
-
 

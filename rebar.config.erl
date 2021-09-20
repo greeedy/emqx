@@ -2,10 +2,15 @@
 
 -export([do/2]).
 
-do(_Dir, CONFIG) ->
-    {HasElixir, C1} = deps(CONFIG),
-    Config = dialyzer(C1),
-    maybe_dump(Config ++ [{overrides, overrides()}] ++ coveralls() ++ config(HasElixir)).
+do(Dir, CONFIG) ->
+    case iolist_to_binary(Dir) of
+        <<".">> ->
+            {HasElixir, C1} = deps(CONFIG),
+            Config = dialyzer(C1),
+            maybe_dump(Config ++ [{overrides, overrides()}] ++ coveralls() ++ config(HasElixir));
+        _ ->
+            CONFIG
+    end.
 
 bcrypt() ->
     {bcrypt, {git, "https://github.com/emqx/erlang-bcrypt.git", {branch, "0.6.0"}}}.
@@ -46,6 +51,8 @@ overrides() ->
     [ {add, [ {extra_src_dirs, [{"etc", [{recursive,true}]}]}
             , {erl_opts, [{compile_info, [{emqx_vsn, get_vsn()}]}]}
             ]}
+    , {add, snabbkaffe,
+       [{erl_opts, common_compile_opts()}]}
     ] ++ community_plugin_overrides().
 
 community_plugin_overrides() ->
@@ -106,8 +113,10 @@ test_deps() ->
 common_compile_opts() ->
     [ debug_info % alwyas include debug_info
     , {compile_info, [{emqx_vsn, get_vsn()}]}
-    | [{d, 'EMQX_ENTERPRISE'} || is_enterprise()]
-    ].
+    , {d, snk_kind, msg}
+    ] ++
+    [{d, 'EMQX_ENTERPRISE'} || is_enterprise()] ++
+    [{d, 'EMQX_BENCHMARK'} || os:getenv("EMQX_BENCHMARK") =:= "1" ].
 
 prod_compile_opts() ->
     [ compressed
@@ -119,23 +128,30 @@ prod_compile_opts() ->
 prod_overrides() ->
     [{add, [ {erl_opts, [deterministic]}]}].
 
+relup_deps(Profile) ->
+    {post_hooks, [{"(linux|darwin|solaris|freebsd|netbsd|openbsd)", compile, "scripts/inject-deps.escript " ++ atom_to_list(Profile)}]}.
+
 profiles() ->
     Vsn = get_vsn(),
     [ {'emqx',          [ {erl_opts, prod_compile_opts()}
                         , {relx, relx(Vsn, cloud, bin)}
                         , {overrides, prod_overrides()}
+                        , relup_deps('emqx')
                         ]}
     , {'emqx-pkg',      [ {erl_opts, prod_compile_opts()}
                         , {relx, relx(Vsn, cloud, pkg)}
                         , {overrides, prod_overrides()}
+                        , relup_deps('emqx-pkg')
                         ]}
     , {'emqx-edge',     [ {erl_opts, prod_compile_opts()}
                         , {relx, relx(Vsn, edge, bin)}
                         , {overrides, prod_overrides()}
+                        , relup_deps('emqx-edge')
                         ]}
     , {'emqx-edge-pkg', [ {erl_opts, prod_compile_opts()}
                         , {relx, relx(Vsn, edge, pkg)}
                         , {overrides, prod_overrides()}
+                        , relup_deps('emqx-edge-pkg')
                         ]}
     , {check,           [ {erl_opts, common_compile_opts()}
                         ]}
@@ -193,7 +209,7 @@ overlay_vars_pkg(bin) ->
     , {platform_etc_dir, "etc"}
     , {platform_lib_dir, "lib"}
     , {platform_log_dir, "log"}
-    , {platform_plugins_dir,  "plugins"}
+    , {platform_plugins_dir,  "etc/plugins"}
     , {runner_root_dir, "$(cd $(dirname $(readlink $0 || echo $0))/..; pwd -P)"}
     , {runner_bin_dir, "$RUNNER_ROOT_DIR/bin"}
     , {runner_etc_dir, "$RUNNER_ROOT_DIR/etc"}
@@ -309,12 +325,14 @@ relx_overlay(ReleaseType) ->
     , {mkdir, "data/"}
     , {mkdir, "data/mnesia"}
     , {mkdir, "data/configs"}
+    , {mkdir, "data/patches"}
     , {mkdir, "data/scripts"}
     , {template, "data/loaded_plugins.tmpl", "data/loaded_plugins"}
     , {template, "data/loaded_modules.tmpl", "data/loaded_modules"}
     , {template, "data/emqx_vars", "releases/emqx_vars"}
     , {copy, "bin/emqx", "bin/emqx"}
     , {copy, "bin/emqx_ctl", "bin/emqx_ctl"}
+    , {copy, "bin/node_dump", "bin/node_dump"}
     , {copy, "bin/install_upgrade.escript", "bin/install_upgrade.escript"}
     , {copy, "bin/emqx", "bin/emqx-{{release_version}}"} %% for relup
     , {copy, "bin/emqx_ctl", "bin/emqx_ctl-{{release_version}}"} %% for relup

@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ node_info(Node) when Node =:= node() ->
     Info#{node              => node(),
           otp_release       => iolist_to_binary(otp_rel()),
           memory_total      => proplists:get_value(allocated, Memory),
-          memory_used       => proplists:get_value(used, Memory),
+          memory_used       => proplists:get_value(total, Memory),
           process_available => erlang:system_info(process_limit),
           process_used      => erlang:system_info(process_count),
           max_fds           => proplists:get_value(max_fds, lists:usort(lists:flatten(erlang:system_info(check_io)))),
@@ -553,7 +553,7 @@ rpc_call(Node, Fun, Args) ->
     end.
 
 otp_rel() ->
-    lists:concat(["R", erlang:system_info(otp_release), "/", erlang:system_info(version)]).
+    lists:concat([emqx_vm:get_otp_version(), "/", erlang:system_info(version)]).
 
 check_row_limit(Tables) ->
     check_row_limit(Tables, max_row_limit()).

@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -76,8 +76,8 @@ connect(Opts) ->
 search(Pool, Base, Filter) ->
     ecpool:with_client(Pool,
         fun(C) ->
-                case application:get_env(?APP, bind_as_user) of
-                    {ok, true} ->
+                case application:get_env(?APP, bind_as_user, false) of
+                    true ->
                         {ok, Opts} = application:get_env(?APP, ldap),
                         BindDn       = get_value(bind_dn, Opts),
                         BindPassword = get_value(bind_password, Opts),
@@ -91,7 +91,7 @@ search(Pool, Base, Filter) ->
                         catch
                             error:Reason -> {error, Reason}
                         end;
-                    {ok, false} ->
+                    false ->
                         eldap2:search(C, [{base, Base},
                                           {filter, Filter},
                                           {deref, eldap2:derefFindingBaseObj()}])
@@ -101,8 +101,8 @@ search(Pool, Base, Filter) ->
 search(Pool, Base, Filter, Attributes) ->
     ecpool:with_client(Pool,
         fun(C) ->
-                case application:get_env(?APP, bind_as_user) of
-                    {ok, true} ->
+                case application:get_env(?APP, bind_as_user, false) of
+                    true ->
                         {ok, Opts} = application:get_env(?APP, ldap),
                         BindDn       = get_value(bind_dn, Opts),
                         BindPassword = get_value(bind_password, Opts),
@@ -117,7 +117,7 @@ search(Pool, Base, Filter, Attributes) ->
                         catch
                             error:Reason -> {error, Reason}
                         end;
-                    {ok, false} ->
+                    false ->
                         eldap2:search(C, [{base, Base},
                                           {filter, Filter},
                                           {attributes, Attributes},

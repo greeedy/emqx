@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2018-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -309,3 +309,7 @@ t_format(_) ->
     io:format("~s", [emqx_packet:format(?UNSUBACK_PACKET(90))]),
     io:format("~s", [emqx_packet:format(?DISCONNECT_PACKET(128))]).
 
+t_parse_empty_publish(_) ->
+    %% 52: 0011(type=PUBLISH) 0100 (QoS=2)
+    {ok, Packet, <<>>, {none, _}} = emqx_frame:parse(<<52, 0>>),
+    ?assertEqual({error, ?RC_PROTOCOL_ERROR}, emqx_packet:check(Packet)).

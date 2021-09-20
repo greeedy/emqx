@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -200,7 +200,7 @@ sort_retained(Msgs)  ->
 store_retained(Msg = #message{topic = Topic, payload = Payload}, Env) ->
     case {is_table_full(Env), is_too_big(size(Payload), Env)} of
         {false, false} ->
-            ok = emqx_metrics:set('messages.retained', retained_count()),
+            ok = emqx_metrics:inc('messages.retained'),
             mnesia:dirty_write(?TAB, #retained{topic = topic2tokens(Topic),
                                                msg = Msg,
                                                expiry_time = get_expiry_time(Msg, Env)});

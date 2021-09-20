@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,6 +30,8 @@
         , range_gen/2
         , range_get/3
         ]).
+
+-compile({no_auto_import,[alias/1]}).
 
 -type(input() :: map()).
 -type(alias() :: atom()).

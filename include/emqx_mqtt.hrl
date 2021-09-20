@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2017-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -30,11 +30,13 @@
 %% MQTT Protocol Version and Names
 %%--------------------------------------------------------------------
 
+-define(MQTT_SN_PROTO_V1, 1).
 -define(MQTT_PROTO_V3, 3).
 -define(MQTT_PROTO_V4, 4).
 -define(MQTT_PROTO_V5, 5).
 
 -define(PROTOCOL_NAMES, [
+    {?MQTT_SN_PROTO_V1, <<"MQTT-SN">>}, %% XXX:Compatible with emqx-sn plug-in
     {?MQTT_PROTO_V3, <<"MQIsdp">>},
     {?MQTT_PROTO_V4, <<"MQTT">>},
     {?MQTT_PROTO_V5, <<"MQTT">>}]).
@@ -95,23 +97,6 @@
 -define(PINGRESP,    13). %% PING response
 -define(DISCONNECT,  14). %% Client or Server is disconnecting
 -define(AUTH,        15). %% Authentication exchange
-
--define(TYPE_NAMES, [
-        'CONNECT',
-        'CONNACK',
-        'PUBLISH',
-        'PUBACK',
-        'PUBREC',
-        'PUBREL',
-        'PUBCOMP',
-        'SUBSCRIBE',
-        'SUBACK',
-        'UNSUBSCRIBE',
-        'UNSUBACK',
-        'PINGREQ',
-        'PINGRESP',
-        'DISCONNECT',
-        'AUTH']).
 
 %%--------------------------------------------------------------------
 %% MQTT V3.1.1 Connect Return Codes

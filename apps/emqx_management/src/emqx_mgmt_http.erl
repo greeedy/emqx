@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -24,6 +24,10 @@
         ]).
 
 -export([init/2]).
+
+-export([ filter/1
+        , authorize_appid/1
+        ]).
 
 -include_lib("emqx/include/emqx.hrl").
 
@@ -87,8 +91,8 @@ http_handlers() ->
     Plugins = lists:map(fun(Plugin) -> Plugin#plugin.name end, emqx_plugins:list()),
     [{"/api/v4", minirest:handler(#{apps   => Plugins ++ [emqx_modules] -- ?EXCEPT_PLUGIN,
                                     except => ?EXCEPT,
-                                    filter => fun filter/1}),
-                 [{authorization, fun authorize_appid/1}]}].
+                                    filter => fun ?MODULE:filter/1}),
+                 [{authorization, fun ?MODULE:authorize_appid/1}]}].
 
 %%--------------------------------------------------------------------
 %% Handle 'status' request
@@ -119,12 +123,18 @@ authorize_appid(Req) ->
          _  -> false
     end.
 
+-ifdef(EMQX_ENTERPRISE).
+filter(_) ->
+    true.
+-else.
 filter(#{app := emqx_modules}) -> true;
 filter(#{app := App}) ->
     case emqx_plugins:find_plugin(App) of
         false -> false;
         Plugin -> Plugin#plugin.active
     end.
+-endif.
+
 
 format(Port) when is_integer(Port) ->
     io_lib:format("0.0.0.0:~w", [Port]);

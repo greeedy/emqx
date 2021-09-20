@@ -62,8 +62,18 @@ uri_parse_test_() ->
        end
       }
     , {"normalise",
-       fun() -> ?assertMatch({ok, #{scheme := https}},
+       fun() -> ?assertMatch({ok, #{scheme := https, host := {127, 0, 0, 1}}},
                              emqx_http_lib:uri_parse("HTTPS://127.0.0.1"))
+       end
+      }
+    , {"coap default port",
+       fun() -> ?assertMatch({ok, #{scheme := coap, port := 5683}},
+                             emqx_http_lib:uri_parse("coap://127.0.0.1"))
+       end
+      }
+    , {"coaps default port",
+       fun() -> ?assertMatch({ok, #{scheme := coaps, port := 5684}},
+                             emqx_http_lib:uri_parse("coaps://127.0.0.1"))
        end
       }
     , {"unsupported_scheme",
@@ -71,4 +81,14 @@ uri_parse_test_() ->
                              emqx_http_lib:uri_parse("wss://127.0.0.1"))
        end
       }
+    , {"ipv6 host",
+       fun() -> ?assertMatch({ok, #{scheme := http, host := T}} when size(T) =:= 8,
+                             emqx_http_lib:uri_parse("http://[::1]:80"))
+       end
+      }
     ].
+
+normalise_headers_test() ->
+    ?assertEqual([{"content-type", "applicaiton/binary"}],
+                 emqx_http_lib:normalise_headers([{"Content_Type", "applicaiton/binary"},
+                                                  {"content-type", "applicaiton/json"}])).

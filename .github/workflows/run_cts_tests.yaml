@@ -1,14 +1,12 @@
 name: Compatibility Test Suite
 
 on:
+  schedule:
+    - cron:  '0 */6 * * *'
   push:
     tags:
       - v*
       - e*
-  release:
-    types:
-      - published
-  pull_request:
 
 jobs:
   ldap:

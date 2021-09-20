@@ -1,4 +1,4 @@
-ARG BUILD_FROM=emqx/build-env:erl23.2.7-alpine-amd64
+ARG BUILD_FROM=emqx/build-env:erl23.2.7.2-emqx-2-alpine-amd64
 ARG RUN_FROM=alpine:3.12
 FROM ${BUILD_FROM} AS builder
 
@@ -26,7 +26,9 @@ COPY . /emqx
 ARG PKG_VSN
 ARG EMQX_NAME=emqx
 
-RUN cd /emqx && make $EMQX_NAME
+RUN cd /emqx \
+    && rm -rf _build/$EMQX_NAME/lib \
+    && make $EMQX_NAME
 
 FROM $RUN_FROM
 

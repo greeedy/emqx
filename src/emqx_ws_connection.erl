@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2018-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -34,7 +34,9 @@
         , stats/1
         ]).
 
--export([call/2]).
+-export([ call/2
+        , call/3
+        ]).
 
 %% WebSocket callbacks
 -export([ init/2
@@ -151,7 +153,10 @@ stats(#state{channel = Channel}) ->
 
 %% kick|discard|takeover
 -spec(call(pid(), Req :: term()) -> Reply :: term()).
-call(WsPid, Req) when is_pid(WsPid) ->
+call(WsPid, Req) ->
+    call(WsPid, Req, 5000).
+
+call(WsPid, Req, Timeout) when is_pid(WsPid) ->
     Mref = erlang:monitor(process, WsPid),
     WsPid ! {call, {self(), Mref}, Req},
     receive
@@ -160,7 +165,7 @@ call(WsPid, Req) when is_pid(WsPid) ->
             Reply;
         {'DOWN', Mref, _, _, Reason} ->
             exit(Reason)
-    after 5000 ->
+    after Timeout ->
         erlang:demonitor(Mref, [flush]),
         exit(timeout)
     end.
@@ -248,15 +253,24 @@ check_origin_header(Req, Opts) ->
     end.
 
 websocket_init([Req, Opts]) ->
-    Peername = case proplists:get_bool(proxy_protocol, Opts)
-                    andalso maps:get(proxy_header, Req) of
-                   #{src_address := SrcAddr, src_port := SrcPort} ->
-                       {SrcAddr, SrcPort};
-                   _ ->
-                       get_peer(Req, Opts)
-               end,
+    {Peername, Peercert} =
+        case proplists:get_bool(proxy_protocol, Opts)
+        andalso maps:get(proxy_header, Req) of
+            #{src_address := SrcAddr, src_port := SrcPort, ssl := SSL} ->
+                SourceName = {SrcAddr, SrcPort},
+                %% Notice: Only CN is available in Proxy Protocol V2 additional info
+                SourceSSL = case maps:get(cn, SSL, undefined) of
+                             undeined -> nossl;
+                             CN -> [{pp2_ssl_cn, CN}]
+                           end,
+                {SourceName, SourceSSL};
+            #{src_address := SrcAddr, src_port := SrcPort} ->
+                SourceName = {SrcAddr, SrcPort},
+                {SourceName , nossl};
+            _ ->
+                {get_peer(Req, Opts), cowboy_req:cert(Req)}
+        end,
     Sockname = cowboy_req:sock(Req),
-    Peercert = cowboy_req:cert(Req),
     WsCookie = try cowboy_req:parse_cookies(Req)
                catch
                    error:badarg ->
@@ -389,7 +403,10 @@ websocket_close(Reason, State) ->
 
 terminate(Reason, _Req, #state{channel = Channel}) ->
     ?LOG(debug, "Terminated due to ~p", [Reason]),
-    emqx_channel:terminate(Reason, Channel).
+    emqx_channel:terminate(Reason, Channel);
+
+terminate(_Reason, _Req, _UnExpectedState) ->
+    ok.
 
 %%--------------------------------------------------------------------
 %% Handle call

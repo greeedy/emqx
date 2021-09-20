@@ -21,6 +21,9 @@ spec:
   {{- if .Values.service.loadBalancerSourceRanges }}
   loadBalancerSourceRanges: {{- toYaml .Values.service.loadBalancerSourceRanges | nindent 4 }}
   {{- end }}
+  {{- if .Values.service.externalIPs }}
+  externalIPs: {{- toYaml .Values.service.externalIPs | nindent 4 }}
+  {{- end }}
   {{- end }}
   ports:
   - name: mqtt
@@ -32,6 +35,17 @@ spec:
     {{- else if eq .Values.service.type "ClusterIP" }}
     nodePort: null
     {{- end }}
+    {{- if not (empty .Values.emqxConfig.EMQX_LISTENER__TCP__INTERNAL) }}
+  - name: internalmqtt
+    port: {{ .Values.service.internalmqtt | default 11883 }}
+    protocol: TCP
+    targetPort: internalmqtt
+    {{- if and (or (eq .Values.service.type "NodePort") (eq .Values.service.type "LoadBalancer")) (not (empty .Values.service.nodePorts.internalmqtt)) }}
+    nodePort: {{ .Values.service.nodePorts.internalmqtt }}
+    {{- else if eq .Values.service.type "ClusterIP" }}
+    nodePort: null
+    {{- end }}
+    {{ end }}
   - name: mqttssl
     port: {{ .Values.service.mqttssl | default 8883 }}
     protocol: TCP
@@ -107,11 +121,18 @@ spec:
   type: ClusterIP
   sessionAffinity: None
   clusterIP: None
+  publishNotReadyAddresses: true
   ports:
   - name: mqtt
     port: {{ .Values.service.mqtt | default 1883 }}
     protocol: TCP
     targetPort: mqtt
+    {{- if not (empty .Values.emqxConfig.EMQX_LISTENER__TCP__INTERNAL) }}
+  - name: internalmqtt
+    port: {{ .Values.service.internalmqtt | default 11883 }}
+    protocol: TCP
+    targetPort: internalmqtt
+    {{ end }}
   - name: mqttssl
     port: {{ .Values.service.mqttssl | default 8883 }}
     protocol: TCP

@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -50,18 +50,17 @@ translate_env(EnvName) ->
     case application:get_env(?APP, EnvName) of
         undefined -> ok;
         {ok, Req} ->
+            {ok, EnablePipelining} = application:get_env(?APP, enable_pipelining),
             {ok, PoolSize} = application:get_env(?APP, pool_size),
             {ok, ConnectTimeout} = application:get_env(?APP, connect_timeout),
             URL = proplists:get_value(url, Req),
-            {ok, #{host := Host0,
-                   path := Path0,
+            {ok, #{host := Host,
                    port := Port,
-                   scheme := Scheme}} = emqx_http_lib:uri_parse(URL),
-            Path = path(Path0),
-            {Inet, Host} = parse_host(Host0),
+                   scheme := Scheme} = URIMap} = emqx_http_lib:uri_parse(URL),
+            Path = path(URIMap),
             MoreOpts = case Scheme of
                         http ->
-                            [{transport_opts, [Inet]}];
+                            [{transport_opts, emqx_misc:ipv6_probe([])}];
                         https ->
                             CACertFile = application:get_env(?APP, cacertfile, undefined),
                             CertFile = application:get_env(?APP, certfile, undefined),
@@ -86,10 +85,11 @@ translate_env(EnvName) ->
                                        , {ciphers, emqx_tls_lib:default_ciphers()}
                                        | TLSOpts
                                        ],
-                            [{transport, ssl}, {transport_opts, [Inet | NTLSOpts]}]
+                            [{transport, ssl}, {transport_opts, emqx_misc:ipv6_probe(NTLSOpts)}]
                         end,
             PoolOpts = [{host, Host},
                         {port, Port},
+                        {enable_pipelining, EnablePipelining},
                         {pool_size, PoolSize},
                         {pool_type, random},
                         {connect_timeout, ConnectTimeout},
@@ -97,7 +97,7 @@ translate_env(EnvName) ->
                         {retry_timeout, 1000}] ++ MoreOpts,
             Method = proplists:get_value(method, Req),
             Headers = proplists:get_value(headers, Req),
-            NHeaders = ensure_content_type_header(Method, to_lower(Headers)),
+            NHeaders = ensure_content_type_header(Method, emqx_http_lib:normalise_headers(Headers)),
             NReq = lists:keydelete(headers, 1, Req),
             {ok, Timeout} = application:get_env(?APP, timeout),
             application:set_env(?APP, EnvName, [{path, Path},
@@ -146,28 +146,18 @@ unload_hooks() ->
     _ = ehttpc_sup:stop_pool('emqx_auth_http/acl_req'),
     ok.
 
-parse_host(Host) ->
-    case inet:parse_address(Host) of
-        {ok, Addr} when size(Addr) =:= 4 -> {inet, Addr};
-        {ok, Addr} when size(Addr) =:= 8 -> {inet6, Addr};
-        {error, einval} ->
-            case inet:getaddr(Host, inet6) of
-                {ok, _} -> {inet6, Host};
-                {error, _} -> {inet, Host}
-            end
-    end.
-
-to_lower(Headers) ->
-    [{string:to_lower(K), V} || {K, V} <- Headers].
-
 ensure_content_type_header(Method, Headers)
   when Method =:= post orelse Method =:= put ->
     Headers;
 ensure_content_type_header(_Method, Headers) ->
     lists:keydelete("content-type", 1, Headers).
 
-path("") ->
+path(#{path := "", 'query' := Query}) ->
+    "?" ++ Query;
+path(#{path := Path, 'query' := Query}) ->
+    Path ++ "?" ++ Query;
+path(#{path := ""}) ->
     "/";
-path(Path) ->
+path(#{path := Path}) ->
     Path.
 

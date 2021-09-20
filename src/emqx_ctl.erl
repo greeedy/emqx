@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2017-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -137,11 +137,11 @@ help() ->
 
 -spec(print(io:format()) -> ok).
 print(Msg) ->
-    io:format(format(Msg)).
+    io:format("~s", [format(Msg)]).
 
 -spec(print(io:format(), [term()]) -> ok).
 print(Format, Args) ->
-    io:format(format(Format, Args)).
+    io:format("~s", [format(Format, Args)]).
 
 -spec(usage([cmd_usage()]) -> ok).
 usage(UsageList) ->
@@ -231,4 +231,3 @@ zip_cmd([X | Xs], [Y | Ys]) -> [{X, Y} | zip_cmd(Xs, Ys)];
 zip_cmd([X | Xs], []) -> [{X, ""} | zip_cmd(Xs, [])];
 zip_cmd([], [Y | Ys]) -> [{"", Y} | zip_cmd([], Ys)];
 zip_cmd([], []) -> [].
-

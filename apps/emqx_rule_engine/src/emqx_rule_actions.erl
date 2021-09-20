@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -168,7 +168,7 @@ on_action_republish(Selected, _Envs = #{
             flags = Flags,
             headers = #{republish_by => ActId},
             topic = emqx_rule_utils:proc_tmpl(TopicTks, Selected),
-            payload = emqx_rule_utils:proc_tmpl(PayloadTks, Selected),
+            payload = format_msg(PayloadTks, Selected),
             timestamp = Timestamp
         });
 
@@ -191,7 +191,7 @@ on_action_republish(Selected, _Envs = #{
             flags = #{dup => false, retain => false},
             headers = #{republish_by => ActId},
             topic = emqx_rule_utils:proc_tmpl(TopicTks, Selected),
-            payload = emqx_rule_utils:proc_tmpl(PayloadTks, Selected),
+            payload = format_msg(PayloadTks, Selected),
             timestamp = erlang:system_time(millisecond)
         }).
 
@@ -206,3 +206,8 @@ on_action_create_do_nothing(ActId, Params) when is_binary(ActId) ->
 
 on_action_do_nothing(Selected, Envs) when is_map(Selected) ->
     emqx_rule_metrics:inc_actions_success(?bound_v('ActId', Envs)).
+
+format_msg([], Data) ->
+    emqx_json:encode(Data);
+format_msg(Tokens, Data) ->
+     emqx_rule_utils:proc_tmpl(Tokens, Data).

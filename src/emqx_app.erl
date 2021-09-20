@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2017-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 -behaviour(application).
 
 -export([ start/2
+        , prep_stop/1
         , stop/1
         , get_description/0
         , get_release/0
@@ -50,11 +51,13 @@ start(_Type, _Args) ->
     print_vsn(),
     {ok, Sup}.
 
--spec(stop(State :: term()) -> term()).
-stop(_State) ->
+prep_stop(_State) ->
     ok = emqx_alarm_handler:unload(),
     emqx_boot:is_enabled(listeners)
       andalso emqx_listeners:stop().
+
+stop(_State) ->
+    ok.
 
 set_backtrace_depth() ->
     Depth = application:get_env(?APP, backtrace_depth, 16),
@@ -83,19 +86,25 @@ print_otp_version_warning() -> ok.
 print_otp_version_warning() ->
     io:format("WARNING: Running on Erlang/OTP version ~p. Recommended: 23~n",
               [?OTP_RELEASE]).
--endif.
+-endif. % OTP_RELEASE
 
+-ifndef(TEST).
 
 print_banner() ->
     io:format("Starting ~s on node ~s~n", [?APP, node()]).
 
--ifndef(TEST).
 print_vsn() ->
     io:format("~s ~s is running now!~n", [get_description(), get_release()]).
--else.
+
+-else. % TEST
+
 print_vsn() ->
     ok.
--endif.
+
+print_banner() ->
+    ok.
+
+-endif. % TEST
 
 get_description() ->
     {ok, Descr0} = application:get_key(?APP, description),

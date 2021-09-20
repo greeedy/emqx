@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2017-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -43,12 +43,40 @@
         , now_to_secs/1
         , now_to_ms/1
         , index_of/2
+        , maybe_parse_ip/1
+        , ipv6_probe/1
         ]).
 
 -export([ bin2hexstr_A_F/1
         , bin2hexstr_a_f/1
         , hexstr2bin/1
         ]).
+
+-define(OOM_FACTOR, 1.25).
+
+%% @doc Parse v4 or v6 string format address to tuple.
+%% `Host' itself is returned if it's not an ip string.
+maybe_parse_ip(Host) ->
+    case inet:parse_address(Host) of
+        {ok, Addr} when is_tuple(Addr) -> Addr;
+        {error, einval} -> Host
+    end.
+
+%% @doc Add `ipv6_probe' socket option if it's supported.
+ipv6_probe(Opts) ->
+    case persistent_term:get({?MODULE, ipv6_probe_supported}, unknown) of
+        unknown ->
+            %% e.g. 23.2.7.1-emqx-2-x86_64-unknown-linux-gnu-64
+            OtpVsn = emqx_vm:get_otp_version(),
+            Bool = (match =:= re:run(OtpVsn, "emqx", [{capture, none}])),
+            _ = persistent_term:put({?MODULE, ipv6_probe_supported}, Bool),
+            ipv6_probe(Bool, Opts);
+        Bool ->
+            ipv6_probe(Bool, Opts)
+    end.
+
+ipv6_probe(false, Opts) -> Opts;
+ipv6_probe(true, Opts) -> [{ipv6_probe, true} | Opts].
 
 %% @doc Merge options
 -spec(merge_opts(Opts, Opts) -> Opts when Opts :: proplists:proplist()).
@@ -190,11 +218,28 @@ do_check_oom([{Val, Max, Reason}|Rest]) ->
 
 tune_heap_size(#{max_heap_size := MaxHeapSize}) ->
     %% If set to zero, the limit is disabled.
-    erlang:process_flag(max_heap_size, #{size => MaxHeapSize,
-                                         kill => false,
+    erlang:process_flag(max_heap_size, #{size => must_kill_heap_size(MaxHeapSize),
+                                         kill => true,
                                          error_logger => true
                                         });
 tune_heap_size(undefined) -> ok.
+
+must_kill_heap_size(Size) ->
+    %% We set the max allowed heap size by `erlang:process_flag(max_heap_size, #{size => Size})`,
+    %% where the `Size` cannot be set to an integer lager than `(1 bsl 59) - 1` on a 64-bit system,
+    %% or `(1 bsl 27) - 1` on a 32-bit system.
+    MaxAllowedSize = case erlang:system_info(wordsize) of
+        8 -> % arch_64
+            (1 bsl 59) - 1;
+        4 -> % arch_32
+            (1 bsl 27) - 1
+    end,
+    %% We multiply the size with factor ?OOM_FACTOR, to give the
+    %% process a chance to suicide by `check_oom/1`
+    case ceil(Size * ?OOM_FACTOR) of
+        Size0 when Size0 >= MaxAllowedSize -> MaxAllowedSize;
+        Size0 -> Size0
+    end.
 
 -spec(proc_name(atom(), pos_integer()) -> atom()).
 proc_name(Mod, Id) ->
@@ -258,3 +303,10 @@ hexchar2int(I) when I >= $0 andalso I =< $9 -> I - $0;
 hexchar2int(I) when I >= $A andalso I =< $F -> I - $A + 10;
 hexchar2int(I) when I >= $a andalso I =< $f -> I - $a + 10.
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+ipv6_probe_test() ->
+    ?assertEqual([{ipv6_probe, true}], ipv6_probe([])).
+
+-endif.

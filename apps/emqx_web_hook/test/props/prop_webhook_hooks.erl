@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -376,7 +376,10 @@ unsub_properties() ->
     #{}.
 
 shutdown_reason() ->
-    oneof([any(), {shutdown, emqx_ct_proper_types:limited_atom()}]).
+    oneof([disconnected, not_autherised,
+           "list_reason", <<"binary_reason">>,
+           {tuple, reason},
+           {shutdown, emqx_ct_proper_types:limited_atom()}]).
 
 empty_env() ->
     {undefined}.

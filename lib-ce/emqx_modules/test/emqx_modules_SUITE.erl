@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -32,11 +32,11 @@
 all() -> emqx_ct:all(?MODULE).
 
 init_per_suite(Config) ->
-    emqx_ct_helpers:start_apps([emqx_management, emqx_modules], fun set_sepecial_cfg/1),
+    emqx_ct_helpers:start_apps([emqx_management, emqx_modules], fun set_special_cfg/1),
     emqx_ct_http:create_default_app(),
     Config.
 
-set_sepecial_cfg(_) ->
+set_special_cfg(_) ->
     application:set_env(emqx, modules_loaded_file, emqx_ct_helpers:deps_path(emqx, "test/emqx_SUITE_data/loaded_modules")),
     ok.
 

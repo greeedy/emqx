@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -26,10 +26,6 @@
         , check_acl/5
         , description/0
         ]).
-
--import(proplists, [get_value/2]).
-
--import(emqx_auth_ldap_cli, [search/4]).
 
 -spec(register_metrics() -> ok).
 register_metrics() ->
@@ -70,14 +66,14 @@ do_check_acl(#{username := Username}, PubSub, Topic, _NoMatchAction,
 
     BaseDN = emqx_auth_ldap:replace_vars(CustomBaseDN, ReplaceRules),
 
-    case search(Pool, BaseDN, Filter, [Attribute, Attribute1]) of
+    case emqx_auth_ldap_cli:search(Pool, BaseDN, Filter, [Attribute, Attribute1]) of
         {error, noSuchObject} ->
             ok;
         {ok, #eldap_search_result{entries = []}} ->
             ok;
         {ok, #eldap_search_result{entries = [Entry]}} ->
-            Topics = get_value(Attribute, Entry#eldap_entry.attributes)
-                ++ get_value(Attribute1, Entry#eldap_entry.attributes),
+            Topics = proplists:get_value(Attribute, Entry#eldap_entry.attributes, [])
+                ++ proplists:get_value(Attribute1, Entry#eldap_entry.attributes, []),
             match(Topic, Topics);
         Error ->
             ?LOG(error, "[LDAP] search error:~p", [Error]),
@@ -95,4 +91,3 @@ match(Topic, [Filter | Topics]) ->
 
 description() ->
     "ACL with LDAP".
-

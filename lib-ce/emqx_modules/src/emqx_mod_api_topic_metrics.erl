@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2021 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -51,6 +51,12 @@
 -export([ list/2
         , register/2
         , unregister/2
+        ]).
+
+-export([ get_topic_metrics/2
+        , register_topic_metrics/2
+        , unregister_topic_metrics/2
+        , unregister_all_topic_metrics/1
         ]).
 
 list(#{topic := Topic0}, _Params) ->
